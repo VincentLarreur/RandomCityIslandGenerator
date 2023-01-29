@@ -1,0 +1,32 @@
+@import url('https://fonts.googleapis.com/css2?family=Abel&display=swap');
+
+body, html {
+  margin: 0;
+  padding: 0;
+  background-color: #6ac0bd;
+}
+
+canvas {
+  padding: 0;
+  margin: auto;
+  display: block;
+}
+
+#logo {
+  margin: 15px;
+  display: flex;
+  position: fixed;
+}
+
+#logo span {
+  font-size: 64px;
+}
+
+#logo h1 {
+  color: white;
+  font-size: 32px;
+  font-family: 'Abel', sans-serif;
+  width: 200px;
+  margin: 0;
+  margin-left: 10px;
+}
