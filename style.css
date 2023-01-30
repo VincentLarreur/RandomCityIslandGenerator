@@ -4,22 +4,23 @@ body, html {
   margin: 0;
   padding: 0;
   background-color: #6ac0bd;
-}
-
-canvas {
-  padding: 0;
-  margin: auto;
-  display: block;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 #logo {
   margin: 15px;
   display: flex;
   position: fixed;
+  top: 0;
+  left: 0;
 }
 
-#logo span {
-  font-size: 64px;
+#logo img {
+  width: 84px;
+  height: 84px;
 }
 
 #logo h1 {

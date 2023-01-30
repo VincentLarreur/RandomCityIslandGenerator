@@ -4,6 +4,7 @@ import * as dat from 'lil-gui'
 let grid = [];
 let border = [];
 let island = [];
+let roads = [];
 let canvas = document.getElementById("canvas");
 let ctx = canvas.getContext("2d");
 
@@ -35,10 +36,26 @@ const isSideTile = (x, y, value) => {
          (y < grid[0].length - 1 && grid[x][y + 1] === value)
 }
 
+const hasNSideTile = (x, y, value) => {
+  let counter = 0
+  if (x > 0 && grid[x - 1][y] === value) counter++
+  if (x < grid.length - 1 && grid[x + 1][y] === value) counter++
+  if (y > 0 && grid[x][y - 1] === value) counter++
+  if (y < grid[0].length - 1 && grid[x][y + 1] === value) counter++
+  return counter
+}
+
+const isDiagonalSideTile = (x, y, value) => {
+  return (x > 0 && y > 0 && grid[x - 1][y - 1] === value) ||
+         (x < grid.length - 1 && y < grid[0].length - 1 && grid[x + 1][y + 1] === value) ||
+         (x < grid.length - 1 && y > 0 && grid[x + 1][y - 1] === value) ||
+         (x > 0 && y < grid[0].length - 1 && grid[x - 1][y + 1] === value)
+}
+
 /**
  * Debug
  */
-const gui = new dat.GUI()
+const gui = new dat.GUI({ title: 'Generator' })
 
 const generateIsland = () => {
   grid = []
@@ -69,10 +86,8 @@ const generateIsland = () => {
   for(const cell of island) {
     let x = cell.x
     let y = cell.y
-    if (isSideTile(x, y, 0)) {
+    if (isSideTile(x, y, 0) || isDiagonalSideTile(x, y, 0)) {
       grid[x][y] = 2;
-      // let index = island.indexOf(cell);
-      // island.splice(index, 1);
     } else {
       islandWithoutBorder.push(cell)
     }
@@ -101,6 +116,7 @@ const generateIsland = () => {
 }
 
 const drawRoads = () => {
+  roads = [];
   // Set the size of each cell in the grid
   const cellWidth = sizes.width / parameters.size;
   const cellHeight = sizes.height / parameters.size;
@@ -108,24 +124,38 @@ const drawRoads = () => {
   for(const cell of island) {
     let x = cell.x
     let y = cell.y
-    if ((x % 3 === 0 || y % 3 === 0) && !isSideTile(x, y, 2)) {
-      ctx.clearRect(x * cellWidth, y * cellHeight, cellWidth, cellHeight);
-
-      ctx.fillStyle = parameters.roadColor;
-      
-      ctx.fillRect(x * cellWidth, y * cellHeight, cellWidth, cellHeight);
+    if ((x % 3 === 0 || y % 3 === 0) && !isSideTile(x, y, 2) && !isDiagonalSideTile(x, y, 2)) {
+      grid[x][y] = 3
+      roads.push(cell);
     }
   }
+
+  roads = roads.filter((cell) => {
+    let counter = hasNSideTile(cell.x, cell.y, 3);
+    return counter !== 1 && counter !== 0
+  });
+
+  roads.forEach((cell) => {
+    let x = cell.x
+    let y = cell.y
+    ctx.clearRect(x * cellWidth, y * cellHeight, cellWidth, cellHeight);
+    ctx.fillStyle = parameters.roadColor;
+    ctx.fillRect(x * cellWidth, y * cellHeight, cellWidth, cellHeight);
+  });
+
 }
 
-gui.add(parameters, 'size').min(10).max(1000).step(10).name('Size')
-gui.add(parameters, 'modifiedNoise').min(0).max(1).step(0.1).name('Modified Noise')
-gui.add(parameters, 'noiseDivider').min(1).max(20).step(1).name('Noise Divider')
-gui.add(parameters, 'maxModifiedNoise').min(0).max(1).step(0.1).name('Max Modified Noise')
-gui.addColor( parameters, 'seaColor' );
-gui.addColor( parameters, 'sandColor' );
-gui.addColor( parameters, 'grassColor' );
-gui.addColor( parameters, 'roadColor' );
-gui.add(parameters, 'generate').name('Generate')
-gui.add(parameters, 'drawRoads').name('Draw Roads')
+const global2DFolder = gui.addFolder( '2D Island generation' );
+global2DFolder.add(parameters, 'size').min(10).max(1000).step(10).name('Size')
+const noiseFolder = global2DFolder.addFolder( 'Noise' );
+noiseFolder.add(parameters, 'modifiedNoise').min(0).max(1).step(0.1).name('Modified Noise')
+noiseFolder.add(parameters, 'noiseDivider').min(1).max(20).step(1).name('Noise Divider')
+noiseFolder.add(parameters, 'maxModifiedNoise').min(0).max(1).step(0.1).name('Max Modified Noise')
+const colorFolder = global2DFolder.addFolder( 'Colors' );
+colorFolder.addColor( parameters, 'seaColor' );
+colorFolder.addColor( parameters, 'sandColor' );
+colorFolder.addColor( parameters, 'grassColor' );
+colorFolder.addColor( parameters, 'roadColor' );
+global2DFolder.add(parameters, 'generate').name('Generate')
+global2DFolder.add(parameters, 'drawRoads').name('Draw Roads')
 generateIsland();
