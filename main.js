@@ -8,6 +8,14 @@ let roads = [];
 let canvas = document.getElementById("canvas");
 let ctx = canvas.getContext("2d");
 
+const TYPES = {
+  SEA: 0,
+  GRASS: 1,
+  SAND: 2,
+  ROAD: 3,
+  COMMERCIAL: 4,
+}
+
 const sizes = {
   width: Math.min(window.innerWidth, window.innerHeight),
   height: Math.min(window.innerWidth, window.innerHeight)
@@ -21,6 +29,7 @@ parameters.size = 100;
 parameters.generate = () => generateIsland()
 parameters.drawRoads = () => drawRoads()
 parameters.download = () => download()
+parameters.toggleId = () => toggleId()
 parameters.modifiedNoise = 0.7
 parameters.noiseDivider = 4
 parameters.maxModifiedNoise = 0.1
@@ -28,6 +37,11 @@ parameters.seaColor = '#6ac0bd'
 parameters.sandColor = '#fcebb6'
 parameters.grassColor = '#a9f05f'
 parameters.roadColor = '#4e5e5e'
+parameters.roadsBetweenSpace = 3
+parameters.deletedRoads = 100
+parameters.cityCenterAreaSpawned = 2
+parameters.cityCenterRadius = 20
+
 
 const isSideTile = (x, y, value) => {
   return (x > 0 && grid[x - 1][y] === value) ||
@@ -52,6 +66,17 @@ const isDiagonalSideTile = (x, y, value) => {
          (x > 0 && y < grid[0].length - 1 && grid[x - 1][y + 1] === value)
 }
 
+const deleteRoads = (x, y) => {
+  if (grid[x][y] === TYPES.GRASS) return;
+  roads.splice(roads.indexOf({x, y}), 1)
+  grid[x][y] = TYPES.GRASS
+  if (!(x + 1 < parameters.size && x - 1 >= 0 && y + 1 < parameters.size && y - 1 >= 0)) return;
+  if (grid[x+1][y] === TYPES.ROAD && (hasNSideTile(x+1, y, TYPES.ROAD) === 0) || hasNSideTile(x+1, y, TYPES.ROAD) === 1) deleteRoads(x+1, y)
+  if (grid[x-1][y] === TYPES.ROAD && (hasNSideTile(x-1, y, TYPES.ROAD) === 0) || hasNSideTile(x-1, y, TYPES.ROAD) === 1) deleteRoads(x-1, y)
+  if (grid[x][y+1] === TYPES.ROAD && (hasNSideTile(x, y+1, TYPES.ROAD) === 0) || hasNSideTile(x, y+1, TYPES.ROAD) === 1) deleteRoads(x, y+1)
+  if (grid[x][y-1] === TYPES.ROAD && (hasNSideTile(x, y-1, TYPES.ROAD) === 0) || hasNSideTile(x, y-1, TYPES.ROAD) === 1) deleteRoads(x, y-1)
+}
+
 /**
  * Debug
  */
@@ -65,7 +90,7 @@ const generateIsland = () => {
   perlin.seed()
 
   // size x size full of 0
-  grid = new Array(parameters.size).fill(0).map(() => new Array(parameters.size).fill(0))
+  grid = new Array(parameters.size).fill(TYPES.SEA).map(() => new Array(parameters.size).fill(TYPES.SEA))
 
   const centerX = parameters.size / 2;
   const centerY = parameters.size / 2;
@@ -76,7 +101,7 @@ const generateIsland = () => {
       const modifiedNoise = noise + (parameters.modifiedNoise - distance / (grid.length / 2));
   
       if (modifiedNoise > parameters.maxModifiedNoise) {
-        grid[x][y] = 1;
+        grid[x][y] = TYPES.GRASS;
         island.push({ x, y });
       }
     }
@@ -86,8 +111,8 @@ const generateIsland = () => {
   for(const cell of island) {
     let x = cell.x
     let y = cell.y
-    if (isSideTile(x, y, 0) || isDiagonalSideTile(x, y, 0)) {
-      grid[x][y] = 2;
+    if (isSideTile(x, y, TYPES.SEA) || isDiagonalSideTile(x, y, TYPES.SEA)) {
+      grid[x][y] = TYPES.SAND;
     } else {
       islandWithoutBorder.push(cell)
     }
@@ -102,9 +127,9 @@ const generateIsland = () => {
   // Iterate through the grid and draw each cell
   for (let x = 0; x < grid.length; x++) {
     for (let y = 0; y < grid[0].length; y++) {      
-      if (grid[x][y] === 1) {
+      if (grid[x][y] === TYPES.GRASS) {
         ctx.fillStyle = parameters.grassColor;
-      } else if (grid[x][y] === 2) {
+      } else if (grid[x][y] === TYPES.SAND) {
         ctx.fillStyle = parameters.sandColor;
       } else {
         ctx.fillStyle = parameters.seaColor;
@@ -117,6 +142,8 @@ const generateIsland = () => {
 
 const drawRoads = () => {
   roads = [];
+  island.forEach((cell) => grid[cell.x][cell.y] = TYPES.GRASS)
+
   // Set the size of each cell in the grid
   const cellWidth = sizes.width / parameters.size;
   const cellHeight = sizes.height / parameters.size;
@@ -124,29 +151,60 @@ const drawRoads = () => {
   for(const cell of island) {
     let x = cell.x
     let y = cell.y
-    if ((x % 3 === 0 || y % 3 === 0) && !isSideTile(x, y, 2) && !isDiagonalSideTile(x, y, 2)) {
+    if ((x % parameters.roadsBetweenSpace === 0 || y % parameters.roadsBetweenSpace === 0) && !isSideTile(x, y, TYPES.SAND) && !isDiagonalSideTile(x, y, TYPES.SAND)) {
       grid[x][y] = 3
       roads.push(cell);
     }
   }
 
-  roads = roads.filter((cell) => {
-    let counter = hasNSideTile(cell.x, cell.y, 3);
-    return counter !== 1 && counter !== 0
-  });
+  for (let i = 0; i < parameters.deletedRoads; i++) {
+    const randomCellIndex = Math.floor(Math.random() * roads.length)
+    if (roads[randomCellIndex]) {
+      deleteRoads(roads[randomCellIndex].x, roads[randomCellIndex].y)
+    }
+  }
+
 
   roads.forEach((cell) => {
+    const counter = hasNSideTile(cell.x, cell.y, TYPES.ROAD);
+    if (counter === 0) {
+      console.log('delete')
+      grid[cell.x][cell.y] = TYPES.GRASS
+      roads.splice(roads.indexOf({x: cell.x, y: cell.y}), 1)
+    }
+  });
+
+  island.forEach((cell) => {
     let x = cell.x
     let y = cell.y
     ctx.clearRect(x * cellWidth, y * cellHeight, cellWidth, cellHeight);
-    ctx.fillStyle = parameters.roadColor;
+    if (grid[x][y] === TYPES.ROAD) {
+      ctx.fillStyle = parameters.roadColor;
+    } else {
+      ctx.fillStyle = parameters.grassColor;
+    }
     ctx.fillRect(x * cellWidth, y * cellHeight, cellWidth, cellHeight);
   });
+}
 
+
+const toggleId = () => {
+  // Set the size of each cell in the grid
+  const cellWidth = sizes.width / parameters.size;
+  const cellHeight = sizes.height / parameters.size;
+  console.log(cellHeight)
+
+  for (let x = 0; x < grid.length; x++) {
+    for (let y = 0; y < grid[0].length; y++) {
+      ctx.font = `${cellWidth}px Georgia`;
+      ctx.fillStyle = "#000";
+      ctx.fillText(grid[x][y].toString(), x * cellWidth, y * cellHeight + cellHeight);
+    }
+  }
 }
 
 const global2DFolder = gui.addFolder( '2D Island generation' );
-global2DFolder.add(parameters, 'size').min(10).max(1000).step(10).name('Size')
+global2DFolder.add(parameters, 'size').min(10).max(500).step(10).name('Size')
 const noiseFolder = global2DFolder.addFolder( 'Noise' );
 noiseFolder.add(parameters, 'modifiedNoise').min(0).max(1).step(0.1).name('Modified Noise')
 noiseFolder.add(parameters, 'noiseDivider').min(1).max(20).step(1).name('Noise Divider')
@@ -157,5 +215,13 @@ colorFolder.addColor( parameters, 'sandColor' );
 colorFolder.addColor( parameters, 'grassColor' );
 colorFolder.addColor( parameters, 'roadColor' );
 global2DFolder.add(parameters, 'generate').name('Generate')
-global2DFolder.add(parameters, 'drawRoads').name('Draw Roads')
+const roadsFolder = global2DFolder.addFolder( 'Roads' );
+roadsFolder.add(parameters, 'roadsBetweenSpace').min(1).max(20).step(1).name('Space Between Roads')
+roadsFolder.add(parameters, 'deletedRoads').min(0).max(200).step(1).name('Deleted roads')
+roadsFolder.add(parameters, 'drawRoads').name('Draw Roads')
+const commercialFolder = global2DFolder.addFolder( 'Commercial' );
+commercialFolder.add(parameters, 'cityCenterAreaSpawned').min(1).max(20).step(1).name('Area Spawned')
+commercialFolder.add(parameters, 'cityCenterRadius').min(1).max(100).step(1).name('Radius')
+// global2DFolder.add(parameters, 'toggleId').name('Toggle Canva ID')
+
 generateIsland();
