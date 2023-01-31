@@ -1,11 +1,14 @@
 import './style.css'
 import * as dat from 'lil-gui'
+import * as THREE from 'three'
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 
 let grid = [];
 let border = [];
 let island = [];
 let roads = [];
-let canvas = document.getElementById("canvas");
+let sands = []
+let canvas = document.getElementById("island2D");
 let ctx = canvas.getContext("2d");
 
 const TYPES = {
@@ -42,6 +45,8 @@ parameters.roadsBetweenSpace = 3
 parameters.deletedRoads = 100
 parameters.cityCenterAreaSpawned = 2
 parameters.cityCenterRadius = 0.5
+parameters.generate3D = () => generateIsland3D()
+parameters.rotateY = 0
 
 
 const isSideTile = (x, y, value) => {
@@ -107,8 +112,12 @@ const generateIsland = () => {
   grid = []
   border = []
   island = []
+  sands = []
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   perlin.seed()
+
+  canvas.style.display = 'flex'
+  canvas3D.style.display = 'none'
 
   // size x size full of 0
   grid = new Array(parameters.size).fill(TYPES.SEA).map(() => new Array(parameters.size).fill(TYPES.SEA))
@@ -134,6 +143,7 @@ const generateIsland = () => {
     let y = cell.y
     if (isSideTile(x, y, TYPES.SEA) || isDiagonalSideTile(x, y, TYPES.SEA)) {
       grid[x][y] = TYPES.SAND;
+      sands.push(cell)
     } else {
       islandWithoutBorder.push(cell)
     }
@@ -164,6 +174,9 @@ const generateIsland = () => {
 const drawRoads = () => {
   roads = [];
   island.forEach((cell) => grid[cell.x][cell.y] = TYPES.GRASS)
+
+  canvas.style.display = 'flex'
+  canvas3D.style.display = 'none'
 
   // Set the size of each cell in the grid
   const cellWidth = sizes.width / parameters.size;
@@ -198,6 +211,9 @@ const drawRoads = () => {
 }
 
 const drawCityCenter = () => {
+  canvas.style.display = 'flex'
+  canvas3D.style.display = 'none'
+
   island.forEach((cell) => {
     if (grid[cell.x][cell.y] === TYPES.ROAD) return;
     grid[cell.x][cell.y] = TYPES.GRASS
@@ -249,15 +265,128 @@ colorFolder.addColor( parameters, 'sandColor' );
 colorFolder.addColor( parameters, 'grassColor' );
 colorFolder.addColor( parameters, 'roadColor' );
 colorFolder.addColor( parameters, 'commercialColor' );
-global2DFolder.add(parameters, 'generate').name('Generate')
+global2DFolder.add(parameters, 'generate').name('1. Generate')
 const roadsFolder = global2DFolder.addFolder( 'Roads' );
 roadsFolder.add(parameters, 'roadsBetweenSpace').min(1).max(20).step(1).name('Space Between Roads')
 roadsFolder.add(parameters, 'deletedRoads').min(0).max(200).step(1).name('Deleted roads')
-roadsFolder.add(parameters, 'drawRoads').name('Draw Roads')
+roadsFolder.add(parameters, 'drawRoads').name('2. Draw Roads')
 const commercialFolder = global2DFolder.addFolder( 'Commercial' );
 commercialFolder.add(parameters, 'cityCenterAreaSpawned').min(1).max(20).step(1).name('Area Spawned')
 commercialFolder.add(parameters, 'cityCenterRadius').min(0).max(1).step(0.1).name('Radius')
-commercialFolder.add(parameters, 'drawCityCenter').name('Draw City Center')
-global2DFolder.add(parameters, 'toggleId').name('Toggle Canva ID')
+commercialFolder.add(parameters, 'drawCityCenter').name('3. Draw City Center')
+// global2DFolder.add(parameters, 'toggleId').name('Toggle Canva ID')
+
+const canvas3D = document.getElementById("island3D");
+canvas3D.style.display = 'none'
+
+const sizes3D = {
+  width: window.innerWidth,
+  height: window.innerHeight
+}
+
+const generateIsland3D = () => {
+  canvas.style.display = 'none'
+  canvas3D.style.display = 'flex'
+
+  const scene = new THREE.Scene()
+
+  scene.fog = new THREE.Fog( new THREE.Color( parameters.seaColor ), parameters.size, parameters.size * 2 ); 
+
+  const geometry = new THREE.BoxGeometry(1, 1, 1)
+
+  for (let cell of island.concat(sands)) {
+    const material = new THREE.MeshBasicMaterial();
+    const mesh = new THREE.Mesh(geometry, material)
+    let x = cell.x
+    let y = cell.y
+    
+    mesh.position.x = x
+    mesh.position.z = y
+    if (grid[x][y] === TYPES.ROAD) {
+      mesh.position.y = 0.25
+      mesh.material.color = new THREE.Color( parameters.roadColor );
+    } else if (grid[x][y] === TYPES.CENTER) {
+      mesh.material.color = new THREE.Color( parameters.commercialColor );
+    } else if (grid[x][y] === TYPES.SAND) {
+      mesh.position.y = -0.25
+      mesh.material.color = new THREE.Color( parameters.sandColor );
+    } else {
+      mesh.material.color = new THREE.Color( parameters.grassColor );
+    }
+    scene.add(mesh)
+  }
+
+  const seaPlane = new THREE.PlaneGeometry(parameters.size * 4, parameters.size * 4)
+  const seaMaterial = new THREE.MeshBasicMaterial();
+  const seaMesh = new THREE.Mesh(seaPlane, seaMaterial)
+  seaMesh.rotation.x = - Math.PI * 0.5
+  seaMesh.material.color = new THREE.Color( parameters.seaColor );
+  scene.add(seaMesh)
+
+  // Base camera
+  const camera = new THREE.PerspectiveCamera(75, sizes3D.width / sizes3D.height, 0.01, 1000)
+
+  const controls = new OrbitControls(camera, canvas3D)
+  controls.enableDamping = true
+  controls.maxDistance = parameters.size 
+  controls.maxPolarAngle = Math.PI / 2;
+
+  controls.target.set(parameters.size / 2, 1, parameters.size / 2);
+  camera.position.copy(controls.target).add(new THREE.Vector3(0, 100, 0));
+
+  controls.coupleCenters = true;
+
+  controls.update();
+  scene.add(camera)
+
+  /**
+   * Renderer
+   */
+  const renderer = new THREE.WebGLRenderer({
+    canvas: canvas3D
+  })
+  renderer.setSize(sizes3D.width, sizes3D.height)
+  renderer.setClearColor(parameters.seaColor)
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+
+  window.addEventListener('resize', () =>
+  {
+      // Update sizes
+      sizes3D.width = window.innerWidth
+      sizes3D.height = window.innerHeight
+
+      // Update camera
+      camera.aspect = sizes3D.width / sizes3D.height
+      camera.updateProjectionMatrix()
+
+      // Update renderer
+      renderer.setSize(sizes3D.width, sizes3D.height)
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+  })
+
+  /**
+   * Animate
+   */
+  const clock = new THREE.Clock()
+
+  const tick = () =>
+  {
+      const elapsedTime = clock.getElapsedTime()
+
+      // Update controls
+      controls.update()
+
+      // Render
+      renderer.render(scene, camera)
+
+      // Call tick again on the next frame
+      window.requestAnimationFrame(tick)
+  }
+  tick()
+}
+
+const global3DFolder = gui.addFolder( '3D Island generation' );
+global3DFolder.close()
+global3DFolder.add(parameters, 'generate3D').name('1. Generate')
 
 generateIsland();
