@@ -2,12 +2,14 @@ import './style.css'
 import * as dat from 'lil-gui'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { Water } from 'three/examples/jsm/objects/Water.js'
 
 let grid = [];
 let border = [];
 let island = [];
 let roads = [];
-let sands = []
+let sands = [];
+let scene;
 let canvas = document.getElementById("island2D");
 let ctx = canvas.getContext("2d");
 
@@ -40,7 +42,7 @@ parameters.seaColor = '#6ac0bd'
 parameters.sandColor = '#fcebb6'
 parameters.grassColor = '#a9f05f'
 parameters.roadColor = '#4e5e5e'
-parameters.commercialColor = '#c18c72'
+parameters.commercialColor = '#b6b7bd'
 parameters.roadsBetweenSpace = 3
 parameters.deletedRoads = 100
 parameters.cityCenterAreaSpawned = 2
@@ -254,12 +256,13 @@ const toggleId = () => {
 }
 
 const global2DFolder = gui.addFolder( '2D Island generation' );
-global2DFolder.add(parameters, 'size').min(10).max(500).step(10).name('Size')
-const noiseFolder = global2DFolder.addFolder( 'Noise' );
+const noiseFolder = global2DFolder.addFolder( 'Island Modifiers' );
+noiseFolder.add(parameters, 'size').min(10).max(500).step(10).name('Size')
 noiseFolder.add(parameters, 'modifiedNoise').min(0).max(1).step(0.1).name('Modified Noise')
 noiseFolder.add(parameters, 'noiseDivider').min(1).max(20).step(1).name('Noise Divider')
 noiseFolder.add(parameters, 'maxModifiedNoise').min(0).max(1).step(0.1).name('Max Modified Noise')
 const colorFolder = global2DFolder.addFolder( 'Colors' );
+colorFolder.close()
 colorFolder.addColor( parameters, 'seaColor' );
 colorFolder.addColor( parameters, 'sandColor' );
 colorFolder.addColor( parameters, 'grassColor' );
@@ -284,16 +287,27 @@ const sizes3D = {
   height: window.innerHeight
 }
 
+const textureLoader = new THREE.TextureLoader()
+const grassColorTexture = textureLoader.load('/textures/grass/color.avif')
+const grassMaterial = new THREE.MeshBasicMaterial({
+  map: grassColorTexture
+});
+
+const sandColorTexture = textureLoader.load('/textures/sand/color.jpeg')
+const sandMaterial = new THREE.MeshBasicMaterial({
+  map: sandColorTexture
+});
+
+
 const generateIsland3D = () => {
   canvas.style.display = 'none'
   canvas3D.style.display = 'flex'
 
-  const scene = new THREE.Scene()
+  scene = new THREE.Scene()
+  scene.remove.apply(scene, scene.children);
 
-  scene.fog = new THREE.Fog( new THREE.Color( parameters.seaColor ), parameters.size, parameters.size * 2 ); 
-
-  const geometry = new THREE.BoxGeometry(1, 1, 1)
-
+  // Draw Island
+  const geometry = new THREE.BoxGeometry(1, 0.25, 1)
   for (let cell of island.concat(sands)) {
     const material = new THREE.MeshBasicMaterial();
     const mesh = new THREE.Mesh(geometry, material)
@@ -302,40 +316,51 @@ const generateIsland3D = () => {
     
     mesh.position.x = x
     mesh.position.z = y
+    mesh.position.y = 0.75
     if (grid[x][y] === TYPES.ROAD) {
-      mesh.position.y = 0.25
+      mesh.position.y += 0.25
       mesh.material.color = new THREE.Color( parameters.roadColor );
     } else if (grid[x][y] === TYPES.CENTER) {
       mesh.material.color = new THREE.Color( parameters.commercialColor );
     } else if (grid[x][y] === TYPES.SAND) {
-      mesh.position.y = -0.25
-      mesh.material.color = new THREE.Color( parameters.sandColor );
+      mesh.position.y -= 0.25
+      mesh.material = sandMaterial
     } else {
-      mesh.material.color = new THREE.Color( parameters.grassColor );
+      mesh.material = grassMaterial
     }
     scene.add(mesh)
   }
 
-  const seaPlane = new THREE.PlaneGeometry(parameters.size * 4, parameters.size * 4)
-  const seaMaterial = new THREE.MeshBasicMaterial();
-  const seaMesh = new THREE.Mesh(seaPlane, seaMaterial)
-  seaMesh.rotation.x = - Math.PI * 0.5
-  seaMesh.material.color = new THREE.Color( parameters.seaColor );
-  scene.add(seaMesh)
+  // Water
+  const waterGeometry = new THREE.PlaneGeometry( 10000, 10000 );
+  let water = new Water(
+    waterGeometry,
+    {
+      textureWidth: 512,
+      textureHeight: 512,
+      waterNormals: textureLoader.load( 'textures/waternormals.jpg', function ( texture ) {
+        texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+      } ),
+      waterColor: 0x001e0f,
+      distortionScale: 3.7,
+      size: 10,
+      fog: scene.fog !== undefined
+    }
+  );
+  water.rotation.x = - Math.PI / 2;
+  scene.add( water );
 
-  // Base camera
+  // Camera & Controls
   const camera = new THREE.PerspectiveCamera(75, sizes3D.width / sizes3D.height, 0.01, 1000)
-
   const controls = new OrbitControls(camera, canvas3D)
   controls.enableDamping = true
   controls.maxDistance = parameters.size 
   controls.maxPolarAngle = Math.PI / 2;
-
+  controls.autoRotate = true
+  controls.autoRotateSpeed = 1
   controls.target.set(parameters.size / 2, 1, parameters.size / 2);
-  camera.position.copy(controls.target).add(new THREE.Vector3(0, 100, 0));
-
+  camera.position.copy(controls.target).add(new THREE.Vector3(0, parameters.size / 4, parameters.size / 1.5));
   controls.coupleCenters = true;
-
   controls.update();
   scene.add(camera)
 
@@ -373,6 +398,8 @@ const generateIsland3D = () => {
   {
       const elapsedTime = clock.getElapsedTime()
 
+      water.material.uniforms[ 'time' ].value += 1.0 / 60.0;
+
       // Update controls
       controls.update()
 
@@ -387,6 +414,6 @@ const generateIsland3D = () => {
 
 const global3DFolder = gui.addFolder( '3D Island generation' );
 global3DFolder.close()
-global3DFolder.add(parameters, 'generate3D').name('1. Generate')
+global3DFolder.add(parameters, 'generate3D').name('4. Generate')
 
 generateIsland();
