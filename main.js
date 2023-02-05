@@ -49,6 +49,12 @@ parameters.cityCenterRadius = 0.5
 parameters.autoRotate = true
 parameters.generate3D = () => generateIsland3D()
 parameters.placeBuildings = () => placeBuildings()
+parameters.exportIsland = true
+parameters.exportRoads = true
+parameters.exportBuildings = true
+parameters.binary = false
+parameters.downloadName = 'new_city_island_generated'
+parameters.exportGLTF = () => exportGLTF()
 
 
 const isSideTile = (x, y, value) => {
@@ -267,7 +273,7 @@ const commercialFolder = global2DFolder.addFolder( 'Commercial' );
 commercialFolder.add(parameters, 'cityCenterAreaSpawned').min(1).max(20).step(1).name('Area Spawned')
 commercialFolder.add(parameters, 'cityCenterRadius').min(0).max(1).step(0.1).name('Radius')
 commercialFolder.add(parameters, 'drawCityCenter').name('3. Draw City Center')
-// global2DFolder.add(parameters, 'toggleId').name('Toggle Canva ID')
+// global2DFolder.add(parameters, 'toggleId').name('Show Canva ID (debug)')
 
 const canvas3D = document.getElementById("island3D");
 canvas3D.style.display = 'none'
@@ -322,7 +328,10 @@ const getRandomMaterial = () => {
 }
 
 const gltfLoader = new GLTFLoader()
+const gltfExporter = new GLTFExporter();
 
+let exportRoads = []
+let exportCubes = []
 let controls = null
 
 const placeRoad = (cell) => {
@@ -381,6 +390,7 @@ const placeRoad = (cell) => {
         model.rotation.y = rotation
         model.scale.set(0.5, 0.5, 0.5)
         scene.add(model)
+        exportRoads.push(model)
     }
   )
 }
@@ -392,6 +402,8 @@ const generateIsland3D = () => {
 
   scene = new THREE.Scene()
   scene.remove.apply(scene, scene.children);
+  exportCubes = []
+  exportRoads = []
   Folder3D.show()
 
   // Draw Island
@@ -418,6 +430,7 @@ const generateIsland3D = () => {
       mesh.material = grassMaterial
     }
     scene.add(mesh)
+    exportCubes.push(mesh)
   }
 
   let sun = new THREE.Vector3();
@@ -524,6 +537,8 @@ const generateIsland3D = () => {
       window.requestAnimationFrame(tick)
   }
   tick()
+  exportGltfFolder.show()
+  exportGltfFolder.close()
 }
 
 let buildings = []
@@ -575,15 +590,46 @@ const placeBuildings = () => {
   }
 }
 
-const exportGLTF = () => {}
+const link = document.createElement( 'a' );
+link.style.display = 'none';
+document.body.appendChild( link ); // Firefox workaround, see #6594
+
+const exportGLTF = () => {
+  let exportArray = []
+  if (parameters.exportIsland) exportArray = exportArray.concat(exportCubes)
+  if (parameters.exportRoads) exportArray = exportArray.concat(exportRoads)
+  if (parameters.exportBuildings) exportArray = exportArray.concat(buildings)
+  let filename = (parameters.binary) ? parameters.downloadName.concat('.glb') : parameters.downloadName.concat('.gltf')
+  gltfExporter.parse(
+    exportArray,
+    function ( gltf ) {
+      const output = JSON.stringify( gltf, null, 2 );
+      link.href = URL.createObjectURL(new Blob( [ output ], { type: 'text/plain' }))
+      link.download = filename;
+      link.click();
+    },
+    {
+      binary: parameters.binary
+    }
+  )
+}
 
 const global3DFolder = gui.addFolder( '3D Island generation' );
 global3DFolder.close()
 global3DFolder.add(parameters, 'generate3D').name('4. Generate')
-const Folder3D = global3DFolder.addFolder( '3D Tweaks' );
+const Folder3D = global3DFolder.addFolder( 'Buildings and Rotation' );
 Folder3D.hide()
 Folder3D.add(parameters, 'autoRotate').name('Auto Rotate').onChange((value) => {
   if (controls) controls.autoRotate = value;
 })
 Folder3D.add(parameters, 'placeBuildings').name('5. Place Buildings')
+const exportGltfFolder = global3DFolder.addFolder( 'Download GLTF' );
+exportGltfFolder.hide()
+exportGltfFolder.add(parameters, 'binary').name('Binary (.glb)')
+exportGltfFolder.add(parameters, 'exportIsland').name('Include Island')
+exportGltfFolder.add(parameters, 'exportRoads').name('Include Roads')
+exportGltfFolder.add(parameters, 'exportBuildings').name('Include Buildings')
+exportGltfFolder.add(parameters, 'downloadName').name('GLTF file name')
+exportGltfFolder.add(parameters, 'exportGLTF').name('6. Download GLTF')
+
 generateIsland();
