@@ -3,9 +3,11 @@ import * as dat from 'lil-gui'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { Water } from 'three/examples/jsm/objects/Water.js'
+import { Sky } from 'three/examples/jsm/objects/Sky.js'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter";
 
 let grid = [];
-let border = [];
 let island = [];
 let roads = [];
 let sands = [];
@@ -21,16 +23,13 @@ const TYPES = {
   CENTER: 4,
 }
 
-const sizes = {
-  width: Math.min(window.innerWidth, window.innerHeight),
-  height: Math.min(window.innerWidth, window.innerHeight)
-}
+const canvaSize = Math.min(window.innerWidth, window.innerHeight)
 // Set the canvas dimensions to match the grid
-canvas.width = sizes.width;
-canvas.height = sizes.height;
+canvas.width = canvaSize;
+canvas.height = canvaSize;
 
 const parameters = {}
-parameters.size = 100;
+parameters.size = 50;
 parameters.generate = () => generateIsland()
 parameters.drawRoads = () => drawRoads()
 parameters.drawCityCenter = () => drawCityCenter()
@@ -44,11 +43,12 @@ parameters.grassColor = '#a9f05f'
 parameters.roadColor = '#4e5e5e'
 parameters.commercialColor = '#b6b7bd'
 parameters.roadsBetweenSpace = 3
-parameters.deletedRoads = 100
+parameters.deletedRoads = 15
 parameters.cityCenterAreaSpawned = 2
 parameters.cityCenterRadius = 0.5
+parameters.autoRotate = true
 parameters.generate3D = () => generateIsland3D()
-parameters.rotateY = 0
+parameters.placeBuildings = () => placeBuildings()
 
 
 const isSideTile = (x, y, value) => {
@@ -86,14 +86,12 @@ const deleteRoads = (x, y) => {
 }
 
 const drawIsland = () => {
-  // Set the size of each cell in the grid
-  const cellWidth = sizes.width / parameters.size;
-  const cellHeight = sizes.height / parameters.size;
+  const cellSize = canvaSize / parameters.size;
   
   island.forEach((cell) => {
     let x = cell.x
     let y = cell.y
-    ctx.clearRect(x * cellWidth, y * cellHeight, cellWidth, cellHeight);
+    ctx.clearRect(x * cellSize, y * cellSize, cellSize, cellSize);
     if (grid[x][y] === TYPES.ROAD) {
       ctx.fillStyle = parameters.roadColor;
     } else if (grid[x][y] === TYPES.CENTER) {
@@ -101,7 +99,7 @@ const drawIsland = () => {
     } else {
       ctx.fillStyle = parameters.grassColor;
     }
-    ctx.fillRect(x * cellWidth, y * cellHeight, cellWidth, cellHeight);
+    ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
   });
 }
 
@@ -112,7 +110,6 @@ const gui = new dat.GUI({ title: 'Generator' })
 
 const generateIsland = () => {
   grid = []
-  border = []
   island = []
   sands = []
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -154,8 +151,7 @@ const generateIsland = () => {
   islandWithoutBorder = null;
 
   // Set the size of each cell in the grid
-  const cellWidth = sizes.width / parameters.size;
-  const cellHeight = sizes.height / parameters.size;
+  const cellSize = canvaSize / parameters.size;
   
   // Iterate through the grid and draw each cell
   for (let x = 0; x < grid.length; x++) {
@@ -168,7 +164,7 @@ const generateIsland = () => {
         ctx.fillStyle = parameters.seaColor;
       }
       // Draw the cell
-      ctx.fillRect(x * cellWidth, y * cellHeight, cellWidth, cellHeight);
+      ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
     }
   }
 }
@@ -179,10 +175,6 @@ const drawRoads = () => {
 
   canvas.style.display = 'flex'
   canvas3D.style.display = 'none'
-
-  // Set the size of each cell in the grid
-  const cellWidth = sizes.width / parameters.size;
-  const cellHeight = sizes.height / parameters.size;
 
   for(const cell of island) {
     let x = cell.x
@@ -242,15 +234,13 @@ const drawCityCenter = () => {
 
 const toggleId = () => {
   // Set the size of each cell in the grid
-  const cellWidth = sizes.width / parameters.size;
-  const cellHeight = sizes.height / parameters.size;
-  console.log(cellHeight)
+  const cellSize = canvaSize / parameters.size;
 
   for (let x = 0; x < grid.length; x++) {
     for (let y = 0; y < grid[0].length; y++) {
       ctx.font = `${cellWidth}px Georgia`;
       ctx.fillStyle = "#000";
-      ctx.fillText(grid[x][y].toString(), x * cellWidth, y * cellHeight + cellHeight);
+      ctx.fillText(grid[x][y].toString(), x * cellSize, y * cellSize + cellSize);
     }
   }
 }
@@ -289,39 +279,138 @@ const sizes3D = {
 
 const textureLoader = new THREE.TextureLoader()
 const grassColorTexture = textureLoader.load('/textures/grass/color.avif')
+grassColorTexture.offset.set(0.05, 0.05);
+grassColorTexture.wrapS = grassColorTexture.wrapT = THREE.RepeatWrapping
 const grassMaterial = new THREE.MeshBasicMaterial({
-  map: grassColorTexture
+  map: grassColorTexture,
+  color: new THREE.Color('#AAA')
 });
 
 const sandColorTexture = textureLoader.load('/textures/sand/color.jpeg')
 const sandMaterial = new THREE.MeshBasicMaterial({
-  map: sandColorTexture
+  map: sandColorTexture,
 });
 
+const houseColor1Texture = textureLoader.load('/textures/house/HouseTexture1.png')
+houseColor1Texture.encoding = THREE.sRGBEncoding
+let mat001 = new THREE.MeshBasicMaterial({
+  map: houseColor1Texture
+})
+
+const houseColor2Texture = textureLoader.load('/textures/house/HouseTexture2.png')
+houseColor2Texture.encoding = THREE.sRGBEncoding
+let mat002 = new THREE.MeshBasicMaterial({
+  map: houseColor2Texture
+})
+
+const houseColor3Texture = textureLoader.load('/textures/house/HouseTexture3.png')
+houseColor3Texture.encoding = THREE.sRGBEncoding
+let mat003 = new THREE.MeshBasicMaterial({
+  map: houseColor3Texture
+})
+
+const houseColor4Texture = textureLoader.load('/textures/house/HouseTexture4.png')
+houseColor4Texture.encoding = THREE.sRGBEncoding
+let mat004 = new THREE.MeshBasicMaterial({
+  map: houseColor4Texture
+})
+
+let materialArray = [mat001, mat002, mat003, mat004]
+
+const getRandomMaterial = () => {
+  return materialArray[Math.floor(Math.random() * materialArray.length)];
+}
+
+const gltfLoader = new GLTFLoader()
+
+let controls = null
+
+const placeRoad = (cell) => {
+  let path = '/models/roads/Street_4Way.glb'
+  let rotation = 0
+  let x = cell.x
+  let y = cell.y
+  let numberSideTile = hasNSideTile(x, y, TYPES.ROAD)
+  const left = (x > 0 && grid[x - 1][y] === TYPES.ROAD)
+  const right = (x < grid.length - 1 && grid[x + 1][y] === TYPES.ROAD)
+  const up = (y > 0 && grid[x][y - 1] === TYPES.ROAD)
+  const down = (y < grid[0].length - 1 && grid[x][y + 1] === TYPES.ROAD)
+  switch(numberSideTile) {
+    case 0:
+      const geometry = new THREE.BoxGeometry(1, 0.25, 1)
+      const material = new THREE.MeshBasicMaterial();
+      const mesh = new THREE.Mesh(geometry, material)
+      mesh.material.color = new THREE.Color('#75777F');
+      mesh.position.x = x
+      mesh.position.z = y
+      mesh.position.y = 0.75
+      scene.add(mesh)
+      return
+    case 1:
+      path = '/models/roads/Street_Deadend.glb'
+      if (left) rotation = 0
+      if (right) rotation = Math.PI
+      if (up) rotation = - Math.PI / 2
+      if (down) rotation = Math.PI / 2
+      break;
+    case 2:
+      path = ((left && right) || (up && down)) ? '/models/roads/Street_Straight.glb' : '/models/roads/Street_Curve.glb'
+      if (left && right) rotation = 0
+      if (up && down) rotation = Math.PI / 2
+      if (up && left) rotation = Math.PI
+      if (up && right) rotation = Math.PI / 2
+      if (down && left) rotation = - Math.PI / 2
+      if (down && right) rotation = 0
+      break;
+    case 3:
+      path = '/models/roads/Street_3Way.glb'
+      if (up && left && right) rotation = - Math.PI / 2
+      if (down && left && right) rotation = Math.PI / 2
+      if (down && up && right) rotation = Math.PI
+      if (down && up && left) rotation = 0
+      break;
+  }
+  gltfLoader.load(
+    path,
+    (gltf) =>
+    {
+        let model = gltf.scene
+        model.position.x = x
+        model.position.z = y
+        model.position.y = 0.8
+        model.rotation.y = rotation
+        model.scale.set(0.5, 0.5, 0.5)
+        scene.add(model)
+    }
+  )
+}
 
 const generateIsland3D = () => {
   canvas.style.display = 'none'
   canvas3D.style.display = 'flex'
+  global2DFolder.close()
 
   scene = new THREE.Scene()
   scene.remove.apply(scene, scene.children);
+  Folder3D.show()
 
   // Draw Island
   const geometry = new THREE.BoxGeometry(1, 0.25, 1)
   for (let cell of island.concat(sands)) {
-    const material = new THREE.MeshBasicMaterial();
-    const mesh = new THREE.Mesh(geometry, material)
     let x = cell.x
     let y = cell.y
+    if (grid[x][y] === TYPES.ROAD) {
+      placeRoad(cell)
+      continue
+    }
+    const material = new THREE.MeshBasicMaterial();
+    const mesh = new THREE.Mesh(geometry, material)
     
     mesh.position.x = x
     mesh.position.z = y
     mesh.position.y = 0.75
-    if (grid[x][y] === TYPES.ROAD) {
-      mesh.position.y += 0.25
-      mesh.material.color = new THREE.Color( parameters.roadColor );
-    } else if (grid[x][y] === TYPES.CENTER) {
-      mesh.material.color = new THREE.Color( parameters.commercialColor );
+    if (grid[x][y] === TYPES.CENTER) {
+      mesh.material.color = new THREE.Color('#75777F');
     } else if (grid[x][y] === TYPES.SAND) {
       mesh.position.y -= 0.25
       mesh.material = sandMaterial
@@ -330,6 +419,8 @@ const generateIsland3D = () => {
     }
     scene.add(mesh)
   }
+
+  let sun = new THREE.Vector3();
 
   // Water
   const waterGeometry = new THREE.PlaneGeometry( 10000, 10000 );
@@ -350,13 +441,36 @@ const generateIsland3D = () => {
   water.rotation.x = - Math.PI / 2;
   scene.add( water );
 
+  // Skybox
+  const sky = new Sky();
+  sky.scale.setScalar( 10000 );
+  scene.add( sky );
+
+  const skyUniforms = sky.material.uniforms;
+
+  skyUniforms[ 'turbidity' ].value = 2;
+  skyUniforms[ 'rayleigh' ].value = 2;
+  skyUniforms[ 'mieCoefficient' ].value = 0.005;
+  skyUniforms[ 'mieDirectionalG' ].value = 0.75;
+
+  const phi = THREE.MathUtils.degToRad( 89 );
+  const theta = THREE.MathUtils.degToRad( 180 );
+
+  sun.setFromSphericalCoords( 1, phi, theta );
+
+  sky.material.uniforms[ 'sunPosition' ].value.copy( sun );
+  water.material.uniforms[ 'sunDirection' ].value.copy( sun ).normalize();
+
+  const ambientLight = new THREE.AmbientLight(0xffffff, 1)
+  scene.add(ambientLight)
+
   // Camera & Controls
   const camera = new THREE.PerspectiveCamera(75, sizes3D.width / sizes3D.height, 0.01, 1000)
-  const controls = new OrbitControls(camera, canvas3D)
+  controls = new OrbitControls(camera, canvas3D)
   controls.enableDamping = true
   controls.maxDistance = parameters.size 
   controls.maxPolarAngle = Math.PI / 2;
-  controls.autoRotate = true
+  controls.autoRotate = parameters.autoRotate
   controls.autoRotateSpeed = 1
   controls.target.set(parameters.size / 2, 1, parameters.size / 2);
   camera.position.copy(controls.target).add(new THREE.Vector3(0, parameters.size / 4, parameters.size / 1.5));
@@ -412,8 +526,64 @@ const generateIsland3D = () => {
   tick()
 }
 
+let buildings = []
+const placeBuildings = () => {
+  if (roads.length === 0) return
+  if (buildings !== []) {
+    for (let building of buildings) {
+      scene.remove(building)
+    }
+    buildings = []
+  }
+
+  for (let cell of island) {
+    let x = cell.x
+    let y = cell.y
+    if ((grid[x][y] === TYPES.CENTER || grid[x][y] === TYPES.GRASS) && hasNSideTile(x, y, TYPES.ROAD) > 0) {
+      let path = '/models/buildings/House.glb'
+      let rotation = 0
+      if (grid[x][y] === TYPES.CENTER) {
+        path = `/models/buildings/Flat${Math.floor(Math.random() * 2) + 1}.glb`
+      } else {
+        path = `/models/buildings/House${Math.floor(Math.random() * 5) + 1}.glb`
+      }
+      if (x > 0 && grid[x - 1][y] === TYPES.ROAD) rotation = - Math.PI / 2
+      if ((x < grid.length - 1 && grid[x + 1][y] === TYPES.ROAD)) rotation = Math.PI / 2
+      if (y > 0 && grid[x][y - 1] === TYPES.ROAD) rotation = Math.PI
+      if (y < grid[0].length - 1 && grid[x][y + 1] === TYPES.ROAD) rotation = 0
+      gltfLoader.load(
+        path,
+        (gltf) =>
+        {
+            let model = gltf.scene
+            model.position.x = x
+            model.position.z = y
+            model.position.y = 0.9
+            model.rotation.y = rotation
+            model.scale.set(0.45, 0.45, 0.45)
+            
+            model.traverse( (object) => {
+              if ( object.isMesh ) {
+                object.material = getRandomMaterial();
+              }
+            } );
+            scene.add(model)
+            buildings.push(model)
+        }
+      )
+    }
+  }
+}
+
+const exportGLTF = () => {}
+
 const global3DFolder = gui.addFolder( '3D Island generation' );
 global3DFolder.close()
 global3DFolder.add(parameters, 'generate3D').name('4. Generate')
-
+const Folder3D = global3DFolder.addFolder( '3D Tweaks' );
+Folder3D.hide()
+Folder3D.add(parameters, 'autoRotate').name('Auto Rotate').onChange((value) => {
+  if (controls) controls.autoRotate = value;
+})
+Folder3D.add(parameters, 'placeBuildings').name('5. Place Buildings')
 generateIsland();
