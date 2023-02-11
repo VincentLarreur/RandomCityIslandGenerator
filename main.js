@@ -495,8 +495,10 @@ const generateIsland3D = () => {
    * Renderer
    */
   const renderer = new THREE.WebGLRenderer({
-    canvas: canvas3D
+    canvas: canvas3D,
+    antialias: true
   })
+
   renderer.setSize(sizes3D.width, sizes3D.height)
   renderer.setClearColor(parameters.seaColor)
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -525,7 +527,7 @@ const generateIsland3D = () => {
   {
       const elapsedTime = clock.getElapsedTime()
 
-      water.material.uniforms[ 'time' ].value += 1.0 / 60.0;
+      water.material.uniforms[ 'time' ].value += 0.5 / 60.0;
 
       // Update controls
       controls.update()
