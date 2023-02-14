@@ -283,7 +283,19 @@ const sizes3D = {
   height: window.innerHeight
 }
 
-const textureLoader = new THREE.TextureLoader()
+const global3DFolder = gui.addFolder( '3D Island generation' );
+global3DFolder.hide()
+global3DFolder.add(parameters, 'generate3D').name('4. Generate')
+const Folder3D = global3DFolder.addFolder( 'Buildings and Rotation' );
+Folder3D.hide()
+
+const textureLoadingManager = new THREE.LoadingManager(
+  () =>
+    {
+        global3DFolder.show()
+    },
+)
+const textureLoader = new THREE.TextureLoader(textureLoadingManager)
 const grassColorTexture = textureLoader.load('/textures/grass/color.avif')
 grassColorTexture.offset.set(0.05, 0.05);
 grassColorTexture.wrapS = grassColorTexture.wrapT = THREE.RepeatWrapping
@@ -320,6 +332,9 @@ houseColor4Texture.encoding = THREE.sRGBEncoding
 let mat004 = new THREE.MeshBasicMaterial({
   map: houseColor4Texture
 })
+
+const waterNormal = textureLoader.load( 'textures/waternormals.jpg')
+waterNormal.wrapS = waterNormal.wrapT = THREE.RepeatWrapping;
 
 let materialArray = [mat001, mat002, mat003, mat004]
 
@@ -442,9 +457,7 @@ const generateIsland3D = () => {
     {
       textureWidth: 512,
       textureHeight: 512,
-      waterNormals: textureLoader.load( 'textures/waternormals.jpg', function ( texture ) {
-        texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-      } ),
+      waterNormals: waterNormal,
       waterColor: 0x001e0f,
       distortionScale: 3.7,
       size: 10,
@@ -616,11 +629,6 @@ const exportGLTF = () => {
   )
 }
 
-const global3DFolder = gui.addFolder( '3D Island generation' );
-global3DFolder.close()
-global3DFolder.add(parameters, 'generate3D').name('4. Generate')
-const Folder3D = global3DFolder.addFolder( 'Buildings and Rotation' );
-Folder3D.hide()
 Folder3D.add(parameters, 'autoRotate').name('Auto Rotate').onChange((value) => {
   if (controls) controls.autoRotate = value;
 })
